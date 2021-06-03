@@ -382,6 +382,7 @@ function mywindow(if_mywindow)
             delete_msg()
         end
         separator()
+        begin_child("子滚动")
         columns(width,"浏览所有信息",true)
         #另一种排序方式的实现
         foreach i in range(data.tag.size)
@@ -465,6 +466,7 @@ function mywindow(if_mywindow)
                 next_column()
             end
         end
+        end_child()
         separator()
         # 注意，表格布局想要重新布局就得需要创建一个新的”列“，设为1列即为原样
         columns(1,"",false)

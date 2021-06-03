@@ -74,7 +74,7 @@ end
 
 function menu()
     if if_menu
-        begin_window("壁纸系统功能界面",if_menu,{flags.no_collapse,flags.no_move,flags.no_title_bar})
+        begin_window("壁纸系统功能界面",if_menu,{flags.no_collapse,flags.no_move,flags.no_title_bar,flags.no_resize})
             # LATER
             # set_window_size(vec2(get_monitor_width(0)/4, get_monitor_height(0)/4 * 3))
             # set_window_pos(vec2(0,get_monitor_height(0)/4))
@@ -82,10 +82,12 @@ function menu()
                 back_grounds.clear()
                 load_images()
                 if_view_places = true
+                if_edit_backgrounds = false
             end
             if button("修改壁纸库")
                 edit_backgrounds.init(db)
                 if_edit_backgrounds = true
+                if_view_places = false
             end
         end_window()
     end
@@ -94,7 +96,7 @@ end
 function login_window() 
     if if_login_window
         var opened = true
-        begin_window("壁纸信息分发系统登录",if_login_window,{flags.no_collapse,flags.no_resize})
+        begin_window("壁纸信息分发系统登录",if_login_window,{flags.no_collapse,flags.no_resize,flags.no_move})
             var w = 580
             var h = 800
             set_window_size(vec2(w, h))

@@ -38,7 +38,7 @@ function start(account,password)
         reg = regex.build("IM00")
         res = reg.search(e.what)
         if !res.empty()
-            return "【ERROR】您未安装数据库驱动程序！！！\n请在该链接下安装：https://downloads.mariadb.com/Connectors/odbc/connector-odbc-3.0.2/"
+            return "【ERROR】您未安装数据库驱动程序！！！\n请在安装文件夹路径中找到MariaDB 3.0.2版本驱动进行安装，如果未能找到，\n请在该链接下安装：https://downloads.mariadb.com/Connectors/odbc/connector-odbc-3.0.2/"
         end
         return "发生未知错误！"
         ########## 异常处理结束 ##############
