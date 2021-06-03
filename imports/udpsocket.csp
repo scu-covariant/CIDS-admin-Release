@@ -1,0 +1,24 @@
+package udpsocket
+import network
+function send(str, port, target_ip, target_port)
+    using network
+    var fd = new udp.socket
+    var host = udp.endpoint_v4(port), target = udp.endpoint(target_ip,target_port)
+    fd.open_v4()
+    fd.bind(host)
+    fd.send_to(str,target)
+    system.out.println(target)
+    fd.close()
+end
+
+function recive(port, size)
+    using network
+    var fd = new udp.socket
+    var listener = udp.endpoint_v4(port), sender = udp.endpoint("0.0.0.0",1235)
+    fd.open_v4()
+    fd.bind(listener)
+    return fd.receive_from(size, sender)
+    # receive后可以拿到sender信息
+    fd.close()
+end
+

@@ -1,0 +1,47 @@
+import csdbc_mysql
+import regex
+import codec.json as json
+package db_connector
+
+var csdbc_adpter = null 
+function start(account,password)
+    # 主机配置
+    var connect = "login_config.json"
+    var ifs = iostream.ifstream(connect)
+    var cfg = null
+    try 
+        # 测试文件是否符合json规范
+        cfg = json.to_var(json.from_stream(ifs))
+    catch e1
+        return "【ERROR】login_config.json文件未找到或有误！请检查工作路径下是否有该文件且格式正确，否则请查阅教程配置该文件为正确内容。"
+    end
+    # 数据库连接字符串
+    var cnt_str = "Driver={MariaDB ODBC 3.0 Driver};Server=" + cfg.server+ ";Port=" + cfg.port + ";Database=scucids;User=" + account + ";Password=" + password + ";Option=2048"
+    try
+        csdbc_adpter = csdbc_mysql.connect_str(cnt_str)
+    catch e
+        ########### csdbc异常处理 ##############
+        # system.out.println(e.what)
+        # 检查访问错误，访问拒绝。
+        var reg=regex.build("Access denied")
+        var res = reg.search(e.what)
+        if !res.empty()
+            return "【ERROR】账户名或密码错误，请检查输入是否正确！"
+        end
+        # 检查连接超时，hy00是对应的错误码，通过正则表达式检索
+        # 后面可能会更新更细的异常信息，可以直接catch
+        reg = regex.build("HY00")
+        res = reg.search(e.what)
+        if !res.empty()
+            return "【ERROR】访问超时！请检查目标服务器地址或服务器运行情况！"
+        end
+        reg = regex.build("IM00")
+        res = reg.search(e.what)
+        if !res.empty()
+            return "【ERROR】您未安装数据库驱动程序！！！\n请在该链接下安装：https://downloads.mariadb.com/Connectors/odbc/connector-odbc-3.0.2/"
+        end
+        return "发生未知错误！"
+        ########## 异常处理结束 ##############
+    end
+    return csdbc_adpter
+end

@@ -1,0 +1,487 @@
+package  view_places
+import imgui
+import imgui_font
+import regex
+import process
+using imgui
+# regex number
+var building_key = ""
+var number_key = ""
+var background_key = ""
+# precision
+iostream.setprecision(32)
+# database
+var db = null
+var monitor_w = get_monitor_width(0)
+var monitor_h = get_monitor_height(0)
+# window flags
+var if_edit_background = false
+var if_edit_message = false
+# 下拉框辅助
+var current_choose = new number
+# fonts
+# var font=add_font_extend_cn(imgui_font.source_han_sans, 32)
+# var large_font = add_font_extend_cn(imgui_font.source_han_sans, 54)
+# var tiny_font = add_font_extend_cn(imgui_font.source_han_sans,18)
+
+# window size !!!!!!!！！注意！后续的你们所有的操作窗口按照这个标准来！！！！
+var operating_window_size = vec2(to_integer(monitor_w/4*3 - 20),to_integer(monitor_h/8*7))
+var operating_window_location = vec2(to_integer(monitor_w/4),20)
+
+#data cache 处理数据的地方
+namespace data
+    # 数据本身
+    var info = new array
+    var view = new array
+    # 字段列表
+    var tag = {"UUID","地点名称","壁纸编号","消息","消息过期时间（秒）"}
+    # 控制升降序
+    var stat = {false,false,false,false,false}
+    var selected = new array
+    var pics = new hash_map
+    var description = new hash_map
+    var pics_idx = new array
+    # generate info
+    function init_info()
+        var mytime = get_utc_time()
+        db.just_exec("delete from msg  WHERE expiretime < " + to_string(mytime))
+        data.info = db.exec("select places.UUID , place,background, COALESCE(title,\"\"), if(COALESCE(expiretime,0)=0,0,COALESCE(expiretime,0)-"+ mytime+"),COALESCE(text,\"\") from places LEFT JOIN msg on places.uuid = msg.uuid  group by places.uuid order by places.uuid;")
+        data.view = data.info
+        data.selected.clear()
+        foreach i in range(data.info.size + 1)
+            data.selected.push_back(false)
+        end
+    end
+    # 利用lambda表达式，根据flag和下标进行的排序操作，通过flag控制升降序
+    var sort_idx = 0
+    function view_sort(idx,flag)
+        if(idx == 0 || idx == 2)
+            if flag
+                data.view.sort([](a,b)->to_integer(a[idx].data) < to_integer(b[idx].data) )
+            else
+                data.view.sort([](a,b)->to_integer(a[idx].data) > to_integer(b[idx].data)  )
+            end
+        else
+            if flag
+                data.view.sort([](a,b)->a[idx].data < b[idx].data )
+            else
+                data.view.sort([](a,b)->a[idx].data > b[idx].data )
+            end
+        end 
+    end
+    function view_sieve_building(key1,key2,key3)
+        try 
+            var reg_key = regex.build(key1)
+            var reg_number = regex.build(key2)
+            data.view.clear()
+            foreach record in data.info
+                if !reg_key.search(record[1].data).empty() && !reg_number.search(record[1].data).empty() && (record[2].data == key3 || key3 == "")
+                    data.view.push_back(record)
+                end
+            end
+            foreach j in data.selected
+                j = false
+            end
+        catch e
+            open_popup("发生异常！##popup登录异常")
+            number_key = ""
+            building_key = ""
+            background_key = ""
+            exception_string = "输入错误"
+        end
+    end
+end
+
+function init(database,account,pics)
+    db = database
+    data.init_info()
+    data.pics = pics
+    foreach i in pics
+        data.pics_idx.push_back(to_string(i[0]))
+    end
+end
+
+function edit_background()
+    if if_edit_background
+        var opened = false
+        begin_window("修改选中教室壁纸##window_edit_background",if_edit_background,{flags.no_resize,flags.no_move,flags.no_collapse})
+        set_window_size(operating_window_size)
+        set_window_pos(operating_window_location)
+        text("预览当前壁纸：")
+        text("单击ID以预览对应壁纸：")
+        separator()
+        columns(2,"壁纸们",true)
+        var wid = 150
+        set_column_width(0,wid)
+        # 布局影响
+        set_column_width(1,to_integer(monitor_w/4*3) - wid)
+        text("壁纸ID")
+        next_column()
+        text("壁纸描述")
+        separator()
+        separator()
+        next_column()
+        foreach i in range(data.pics.size)
+            opened = false
+            selectable(to_string(data.pics[i][0]),opened)
+            if is_item_hovered()&&is_mouse_clicked(0)
+                open_popup("##popupimage"+ i  +"_" + i)
+            end
+            opened = true
+            if begin_popup_modal("##popupimage"+ i + "_" + i,opened,{flags.no_move,flags.always_auto_resize})
+                image(data.pics[i][1],vec2(1000,1000))
+                end_popup() 
+            end
+            next_column()
+            text(data.pics[i][2])
+            separator()
+            next_column()
+        end
+        columns(1,"",false)
+        text("")
+        text("壁纸修改操作区：")
+        combo_box("选择壁纸##choose_background",current_choose,data.pics_idx) 
+        if button("对选中的所有房间更换为该壁纸")
+            ################################ 另一种方式
+            var stat_str = "update places set background=" + data.pics_idx[current_choose] + " where UUID="
+            var cnt = 0
+            foreach i in range(data.selected.size)
+                if data.selected[i]
+                    if cnt == 0
+                        stat_str +=  to_string(i)
+                    else
+                        stat_str += " or UUID=" + to_string(i)
+                    end
+                cnt++
+                end
+            end
+            # system.out.println(stat_str)
+            if cnt != 0
+                db.just_exec(stat_str)
+            end
+
+            ######################## 一种感觉不是很快的方式
+            # var stmt = db.prepare("update places set background = ? where UUID = ?")
+            # stmt.bind(0,data.pics_idx[current_choose])
+            # foreach i in range(data.selected.size)
+            #     if data.selected[i]
+            #         stmt.bind(1,i)
+            #         stmt.just_exec()
+            #     end
+            # end
+            open_popup("修改成功##popupedit")
+            data.init_info()
+        end
+        image(data.pics[current_choose][1], vec2(data.pics[current_choose][1].get_width(),data.pics[current_choose][1].get_height()) )
+        opened = true
+        if begin_popup_modal("修改成功##popupedit",opened,{flags.no_move,flags.always_auto_resize})
+            text("修改成功！")
+            same_line()
+            if button("确定##popupconfirm")
+                if_edit_background = false
+                close_current_popup()
+            end
+            end_popup() 
+        end
+        end_window()
+    end
+end
+## 时间操作函数
+function get_utc_time()
+    var pro = process.exec("./src/get_utc_second.exe",{})
+    return to_integer(pro.out().getline())
+end
+
+# 消息全局变量
+var type_choose = {"即时消息","延时消息"}
+var msg_idx = 0
+var sec_exp_idx = 0
+var mins_exp_idx = 0
+var sec_idx = 0
+var mins_idx = 0
+var hours_idx = 0
+var days_idx = 0
+var mins = {"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48","49","50","51","52","53","54","55","56","57","58","59"}
+var hours = {"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23"}
+var days = {"0","1","2","3","4","5","6","7"}
+var title_buff = ""
+var text_buff = ""
+function edit_message()
+    if if_edit_message
+        begin_window("发送延时即时消息##window_messages",if_edit_message,{flags.no_resize,flags.no_move,flags.no_collapse})
+            set_window_size(operating_window_size)
+            set_window_pos(operating_window_location)
+            text("请选择消息类型：")
+            same_line()
+            combo_box("##选择消息类型",msg_idx,type_choose)
+            separator()
+            separator()
+            input_text("消息标题",title_buff,64)
+            input_text_multiline("消息内容",text_buff,512)
+            separator()
+            separator()
+            if msg_idx == 1
+                text("发送时间延时：")
+                columns(3,"",false)
+                combo_box("分",mins_idx,mins)
+                next_column()
+                combo_box("时",hours_idx,hours)
+                next_column()
+                combo_box("天",days_idx,days)
+                next_column()
+                separator()
+            end
+            columns(1,"",false)
+            separator()
+            text("持续时间：")
+            columns(2,"",false)
+            combo_box("秒##yanshisec",sec_exp_idx,mins)
+            next_column()
+            combo_box("分##yanshimin",mins_exp_idx,mins)
+            columns(1,"",false)
+            if button("发送消息")
+                var stmt = null
+                var t1_tail = get_utc_time()
+                db.just_exec("delete from msg  WHERE expiretime < " + to_string(t1_tail))
+                var keep_time = sec_exp_idx + mins_exp_idx * 60
+                # 延时消息
+                if msg_idx == 1
+                    var cnt = 0
+                    var wait_time = mins_idx * 60 + hours_idx * 3600 + days_idx * 3600 * 24
+                    t1_tail += wait_time
+                    var sql_str = "insert into msg (uuid,title,starttime,expiretime,text) values "
+                    var expiretime = keep_time + t1_tail
+                    foreach i in range(data.selected.size)
+                        if data.selected[i]
+                            if cnt == 0
+                                sql_str += "(" + to_string(i) + ",\"" + title_buff  + "\"," +  to_string(t1_tail) + "," + expiretime + ",\"" + text_buff + "\")"
+                            else
+                                sql_str += ",(" + to_string(i) + ",\"" + title_buff  + "\"," + to_string(t1_tail)+ "," + expiretime + ",\"" + text_buff + "\")"
+                            end
+                            cnt++
+                        end
+                    end
+                    if cnt != 0
+                        db.just_exec(sql_str)
+                    end
+                end
+                # 即时消息
+                if msg_idx == 0
+                    var cnt = 0
+                    var sql_str = "insert into msg (uuid,title,starttime,expiretime,text) values "
+                    var expiretime = keep_time + t1_tail
+                    foreach i in range(data.selected.size)
+                        if data.selected[i]
+                            if cnt == 0
+                                sql_str += "(" + to_string(i) + ",\"" + title_buff  + "\"," + to_string(t1_tail) + "," + expiretime + ",\"" + text_buff + "\")"
+                            else
+                                sql_str += ",(" + to_string(i) + ",\"" + title_buff  + "\"," + to_string(t1_tail) + "," + expiretime + ",\"" + text_buff + "\")"
+                            end
+                            cnt++
+                        end
+                    end
+                    if cnt != 0
+                        db.just_exec(sql_str)
+                    end
+                end
+                data.init_info()
+                open_popup("修改成功##popupedit_msg")
+            end
+            same_line()
+            if button("清空内容")
+                sec_exp_idx = 0
+                mins_exp_idx = 0
+                sec_idx = 0
+                mins_idx = 0
+                hours_idx = 0
+                days_idx = 0
+                title_buff = ""
+                text_buff = ""
+            end
+            opened = true
+            if begin_popup_modal("修改成功##popupedit_msg",opened,{flags.no_move,flags.always_auto_resize})
+                text("修改成功！")
+                same_line()
+                if button("确定##popupconfirm")
+                    if_edit_message = false
+                    close_current_popup()
+                end
+                end_popup() 
+            end
+        end_window()
+    end
+end
+function delete_msg()
+    var sql_str = "delete from msg where UUID = "
+    var cnt = 0
+    foreach i in range(data.selected.size)
+        if data.selected[i]
+            if cnt == 0
+                sql_str +=  to_string(i)
+            else
+                sql_str += " or UUID=" + to_string(i)
+            end
+        cnt++
+        end
+    end
+    if cnt!=0
+        db.just_exec(sql_str)
+        data.init_info()
+    end
+end
+
+function mywindow(if_mywindow)
+    begin_window("全部教室列表##choose",if_mywindow,{flags.no_resize,flags.no_move,flags.no_collapse})
+    set_window_size(operating_window_size)
+    set_window_pos(operating_window_location)
+    var length = data.view.size
+    var width = 5
+    var opened = false
+        # 表格化主要由本控件实现：
+        # false是不显示竖线，true是显示竖线
+        text("表格信息筛选器")
+        input_text("地点名称##text_place",building_key,50)
+        input_text("门牌号",number_key,5)
+        input_text("正在应用的壁纸号",background_key,5)
+        if button("清空筛选")
+            building_key = ""
+            number_key = ""
+            background_key = ""
+        end
+        same_line()
+        if button("筛选")
+            data.view_sieve_building(building_key,number_key,background_key)
+            length = data.view.size
+        end
+        separator()
+        text("")
+        text("各教室数据预览，可以通过单击对应表格浏览壁纸和消息内容!")
+        if button("全选")
+            foreach record in data.view
+                data.selected[to_integer(record[0].data)] = true
+            end
+        end
+        same_line()
+        if button("全不选")
+            foreach record in data.view
+                data.selected[to_integer(record[0].data)] = false
+            end
+        end
+        same_line()
+        text("         ")
+        same_line()
+        if button("修改选中教室壁纸")
+            if_edit_background = true
+        end
+        same_line()
+        if button("向选中教室发送消息")
+            if_edit_message = true
+        end
+        same_line()
+        if button("清空所选教室消息")
+            delete_msg()
+        end
+        separator()
+        columns(width,"浏览所有信息",true)
+        #另一种排序方式的实现
+        foreach i in range(data.tag.size)
+            opened = false
+            
+            selectable(data.tag[i],opened)
+            if is_item_hovered()&&is_mouse_clicked(0)
+                data.view_sort(i,data.stat[i])
+                data.stat[i] = !data.stat[i]
+                data.sort_idx = i
+            end
+            var symbol = dirs.down
+            if data.sort_idx == i 
+                if data.stat[i] == true
+                    symbol = dirs.up
+                else
+                    symbol = dirs.down
+                end
+                same_line()
+                arrow_button(to_string(i),symbol)
+            end
+
+            ## 这个是利用鼠标事件触发的方式“单击”可选列表控件实现排序操作
+            next_column()
+        end
+        # 渲染之后的数据
+        foreach i in range(length)
+            separator()
+            foreach j in range(width)
+                if get_column_index()==0
+                    # 每一行都要添加分割，不然就没有“横线”
+                    separator()
+                end
+                # 注意这里要to_string
+                opened = false
+                # 主要的显示控件，我这里因为有进一步需求，所以用的selectable
+                # 如果没有进一步需求，用text()可以减小开销！！！！！！！！！！！！！！！！！！！！！！！！！
+                if j == 0
+                    check_box(data.view[i][0].data+"##box"+data.view[i][0].data,data.selected[to_integer(data.view[i][0].data)])
+                else
+                    selectable(to_string(data.view[i][j].data),opened)
+                    # 显示壁纸预览
+                    if j == 2
+                        if is_item_hovered()&&is_mouse_clicked(0)
+                            open_popup("##popupimage"+data.view[i][j].data  +"_" + i)
+                        end
+                        opened = true
+                        if begin_popup_modal("##popupimage"+data.view[i][j].data + "_" + i,opened,{flags.no_move,flags.always_auto_resize})
+                            var idx = -1
+                            foreach pic_idx in range(data.pics.size)
+                                if to_integer(data.view[i][j].data) == data.pics[pic_idx][0]
+                                    idx = pic_idx
+                                end
+                            end
+                            if idx == -1
+                                text("找不到对应的壁纸，请检查壁纸库!")
+                            else
+                                image(data.pics[idx][1],vec2(1000,1000))
+                            end
+                            end_popup() 
+                        end
+                    end
+                    # 显示消息预览
+                    if j == 3
+                        if is_item_hovered()&&is_mouse_clicked(0)
+                            open_popup("##popuptext"+data.view[i][j].data  +"_" + i)
+                        end
+                        opened = true
+                        if begin_popup_modal("##popuptext"+data.view[i][j].data + "_" + i,opened,{flags.no_move,flags.always_auto_resize})
+                            if data.view[i][5].data == ""
+                                text("当前教室没有消息！")
+                            else
+                                text("消息内容是：")
+                                text(data.view[i][5].data)
+                            end
+                            end_popup() 
+                        end
+                    end
+                end
+                # 切换到下一列继续渲染
+                next_column()
+            end
+        end
+        separator()
+        # 注意，表格布局想要重新布局就得需要创建一个新的”列“，设为1列即为原样
+        columns(1,"",false)
+    end_window()
+
+    # other subwindows
+    edit_background()
+    edit_message()
+end
+
+
+# 测试data内的排序功能是否正常
+# loop 
+#     data.info_sort(system.in.input(),true)
+#     foreach i in data.info
+#         system.out.println(i)
+#     end
+# end
+
+# 初始化数据

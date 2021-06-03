@@ -1,0 +1,17 @@
+package trans
+import process
+# global vars
+var cmd_args = context.cmd_args
+var cur_dir = runtime.get_current_dir()
+constant sepa = system.path.separator
+constant deli = system.path.delimiter
+# bmp到jpg
+function bmp2jpg()
+    var pro = process.exec("./src/trans.exe",{cur_dir + sepa,"2"})
+    pro.wait()
+end
+# jpg到bmp
+function jpg2bmp()
+    var pro = process.exec("./src/trans.exe",{cur_dir + sepa,"1"})
+    pro.wait()
+end

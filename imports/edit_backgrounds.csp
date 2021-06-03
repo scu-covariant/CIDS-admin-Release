@@ -1,0 +1,166 @@
+package edit_backgrounds
+import imgui
+import imgui_font
+import regex
+import process
+import images_func
+using imgui
+var monitor_w = get_monitor_width(0)
+var monitor_h = get_monitor_height(0)
+# database
+var db = null
+# window flags
+var if_edit_background = false
+# 下拉框辅助
+var current_choose = new number
+# window size !!!!!!!！！注意！后续的你们所有的操作窗口按照这个标准来！！！！
+var operating_window_size = vec2(to_integer(monitor_w/4*3 - 20),to_integer(monitor_h/8*7))
+var operating_window_location = vec2(to_integer(monitor_w/4),20)
+# background array
+var pics = null
+var local_pics = new hash_set
+# popup status
+var edit = 0
+# path consts
+var cur_dir = runtime.get_current_dir()
+var excption = ""
+constant sepa = system.path.separator
+constant deli = system.path.delimiter
+
+# text buff
+var text_buff = ""
+function init(dbin)
+    db = dbin
+    images_func.db = db
+end
+function start(if_start,pics)
+    begin_window("修改壁纸库##editdb",if_start,{flags.no_resize,flags.no_move,flags.no_collapse})
+    set_window_size(operating_window_size)
+    set_window_pos(operating_window_location)
+        var opened = true
+        text("预览当前壁纸：")
+        text("单击ID以预览对应壁纸：")
+        separator()
+        columns(2,"壁纸们",true)
+        var wid = 150
+        set_column_width(0,wid)
+        # 布局影响
+        set_column_width(1,to_integer(monitor_w/4*3) - wid)
+        text("壁纸ID")
+        next_column()
+        text("壁纸描述")
+        separator()
+        separator()
+        next_column()
+        foreach i in range(pics.size)
+            opened = false
+            selectable(to_string(pics[i][0]),opened)
+            if is_item_hovered()&&is_mouse_clicked(0)
+                open_popup("##popupimage"+ i  +"_" + i)
+            end
+            opened = true
+            if begin_popup_modal("##popupimage"+ i + "_" + i,opened,{flags.no_move,flags.always_auto_resize})
+                image(pics[i][1],vec2(1000,1000))
+                end_popup() 
+            end
+            next_column()
+            opened = false
+            selectable(pics[i][2],opened)
+            if is_item_hovered()&&is_mouse_clicked(0)
+                text_buff = pics[i][2]
+                open_popup("编辑壁纸描述##popupdes" + i)
+            end
+            opened = true
+            if begin_popup_modal("编辑壁纸描述##popupdes" + i,opened,{flags.no_move,flags.always_auto_resize})
+                input_text("",text_buff,128)
+                same_line()
+                if button("Confirm")
+                    var stmt=db.prepare("update backgrounds set description=? where picid=?")
+                    stmt.bind(0,text_buff)
+                    stmt.bind(1,pics[i][0])
+                    stmt.exec()
+                    var res = db.exec("select picid,description from backgrounds order by picid")
+                    foreach r in range(res.size)
+                        pics[r][2] = res[r][1].data
+                    end
+                    close_current_popup()
+                end
+                end_popup()
+            end
+            separator()
+            next_column()
+        end
+        columns(1,"",false)
+        if button("更新壁纸到数据库")
+            open_popup("更新壁纸")
+            edit = 0
+        end
+        opened = true
+        if begin_popup_modal("更新壁纸",opened,{flags.no_move,flags.always_auto_resize})
+            if edit == 0
+                text("1.请打开壁纸缓存文件夹，向其中拷贝入需要更新的壁纸。")
+                text("2.目前只支持jpg格式的壁纸。")
+                text("3.注意！！！请保证每个文件名一定为【数字.jpg】的格式，否则会发生意想不到的错误。")
+                text("4.更新并非实时更新，每天终端会从数据库拉取两次。")
+                text("5.拷贝完成后，单击【上传】按钮，会将数据库中所有的壁纸替换为本地缓存中保存的壁纸")
+                text("")
+            end
+            if edit == 1
+                text("请一定检查，当前壁纸数量是否与【浏览全部教室】功能中所有的教室的壁纸号一致！")
+                text("如果发生了该表中的数值，在壁纸库中不存在的情况，会导致很严重的冲突！请务必注意！")
+                text("如果壁纸较大，或者网络环境不畅通，可能单击上传会有卡顿，请耐心等待!")
+                if button("上传所有壁纸")
+                    excption = ""
+                    local_pics.clear()
+                    var files = system.path.scan("./backgrounds")
+                    files.pop_front()
+                    files.pop_front()
+                    var reg_jpg = regex.build("^[0-9]+.jpg$")
+                    var reg_number = regex.build("^[0-9]+")
+                    var all_right = true
+                    foreach info in files
+                        if reg_jpg.search(info.name).empty()
+                            excption += "错误的文件名,请检查：" + info.name + "\n"
+                            all_right = false
+                        else
+                            local_pics.insert(reg_number.search(info.name).str(0))
+                        end
+                    end
+                    var res = db.exec("SELECT DISTINCT background from places order by background")
+                    foreach i in res
+                        if !local_pics.exist(i[0].data)
+                            excption += "错误！检测到教室信息中存在的壁纸号 [" + i[0].data + "]在当前路径中不存在，请修改文件夹中的壁纸信息，或者修改教室信息表中对应的壁纸号\n"
+                            all_right = false
+                        end
+                    end
+                    if all_right
+                        foreach i in local_pics
+                            images_func.update_sigle_image(i)
+                        end
+                        pics.clear()
+                        images_func.download_images()
+                        var res = db.exec("select picid,description from backgrounds order by picid")
+                        foreach i in res
+                            # system.out.println("bmp_cache/" + i[0].data + ".bmp")
+                            pics.push_back({to_integer(i[0].data),load_bmp_image("bmp_cache/" + i[0].data + ".bmp"),i[1].data})
+                        end
+                        close_current_popup()
+                    end
+                end
+                same_line()
+                text("        ")
+            end
+            same_line()
+            if button("打开缓存文件夹")
+                edit = 1
+                var pro = process.exec("explorer",{cur_dir + sepa + "backgrounds"})
+                system.out.println(cur_dir + sepa + "backgrounds")
+                pro.wait()
+            end
+            separator()
+            text("报错栏：")
+            text(excption)
+            end_popup()
+        end
+    end_window()
+end
