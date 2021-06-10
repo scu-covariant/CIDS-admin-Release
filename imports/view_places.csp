@@ -52,6 +52,13 @@ namespace data
             data.selected.push_back(false)
         end
     end
+    function reflash()
+        var mytime = get_utc_time()
+        db.just_exec("delete from msg  WHERE expiretime < " + to_string(mytime))
+        data.info = db.exec("select places.UUID , place,background, COALESCE(title,\"\"), if(COALESCE(expiretime,0)=0,0,COALESCE(expiretime,0)-"+ mytime+"),COALESCE(text,\"\") from places LEFT JOIN msg on places.uuid = msg.uuid  group by places.uuid order by places.uuid;")
+        data.view = data.info
+        data.view_sieve_building(number_key,building_key,background_key)
+    end
     # 利用lambda表达式，根据flag和下标进行的排序操作，通过flag控制升降序
     var sort_idx = 0
     function view_sort(idx,flag)
@@ -170,9 +177,11 @@ function edit_background()
             #     end
             # end
             open_popup("修改成功##popupedit")
-            data.init_info()
+            data.reflash()
         end
-        image(data.pics[current_choose][1], vec2(data.pics[current_choose][1].get_width(),data.pics[current_choose][1].get_height()) )
+        var img_width = to_integer(get_monitor_width(0) * 0.7);
+        var img_height = to_integer(img_width * data.pics[current_choose][1].get_height() / data.pics[current_choose][1].get_width())
+        image(data.pics[current_choose][1], vec2(img_width,img_height) )
         opened = true
         if begin_popup_modal("修改成功##popupedit",opened,{flags.no_move,flags.always_auto_resize})
             text("修改成功！")
@@ -241,7 +250,7 @@ function edit_message()
             columns(1,"",false)
             if button("发送消息")
                 var stmt = null
-                var t1_tail = get_utc_time()
+                var t1_tail = get_utc_time() + 1
                 db.just_exec("delete from msg  WHERE expiretime < " + to_string(t1_tail))
                 var keep_time = sec_exp_idx + mins_exp_idx * 60
                 # 延时消息
@@ -284,7 +293,7 @@ function edit_message()
                         db.just_exec(sql_str)
                     end
                 end
-                data.init_info()
+                data.reflash()
                 open_popup("修改成功##popupedit_msg")
             end
             same_line()
@@ -326,7 +335,7 @@ function delete_msg()
     end
     if cnt!=0
         db.just_exec(sql_str)
-        data.init_info()
+        data.reflash()
     end
 end
 
@@ -354,7 +363,9 @@ function mywindow(if_mywindow)
             length = data.view.size
         end
         separator()
-        text("")
+        if button("刷新")
+            data.reflash()
+        end
         text("各教室数据预览，可以通过单击对应表格浏览壁纸和消息内容!")
         if button("全选")
             foreach record in data.view
@@ -440,7 +451,9 @@ function mywindow(if_mywindow)
                             if idx == -1
                                 text("找不到对应的壁纸，请检查壁纸库!")
                             else
-                                image(data.pics[idx][1],vec2(1000,1000))
+                                var img_width = to_integer(get_monitor_width(0) * 0.7)
+                                var img_height = to_integer(img_width * data.pics[idx][1].get_height() / data.pics[idx][1].get_width() )
+                                image(data.pics[idx][1],vec2(img_width,img_height))
                             end
                             end_popup() 
                         end

@@ -16,7 +16,7 @@ function start(account,password)
         return "【ERROR】login_config.json文件未找到或有误！请检查工作路径下是否有该文件且格式正确，否则请查阅教程配置该文件为正确内容。"
     end
     # 数据库连接字符串
-    var cnt_str = "Driver={MariaDB ODBC 3.0 Driver};Server=" + cfg.server+ ";Port=" + cfg.port + ";Database=scucids;User=" + account + ";Password=" + password + ";Option=2048"
+    var cnt_str = "Driver={MariaDB ODBC 3.0 Driver};Server=" + cfg.server+ ";Port=" + cfg.port + ";Database=scucids;User=" + account + ";Password=" + password + ";Option=3"
     try
         csdbc_adpter = csdbc_mysql.connect_str(cnt_str)
     catch e
