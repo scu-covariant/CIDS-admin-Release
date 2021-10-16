@@ -4,6 +4,7 @@ import imgui_font
 import regex
 import process
 import images_func
+import trans
 using imgui
 var monitor_w = get_monitor_width(0)
 var monitor_h = get_monitor_height(0)
@@ -60,7 +61,9 @@ function start(if_start,pics)
             end
             opened = true
             if begin_popup_modal("##popupimage"+ i + "_" + i,opened,{flags.no_move,flags.always_auto_resize})
-                image(pics[i][1],vec2(1000,1000))
+                var img_width = to_integer(get_monitor_width(0) * 0.7)
+                var img_height = to_integer(img_width * pics[i][1].get_height() / pics[i][1].get_width() )
+                image(pics[i][1],vec2(img_width,img_height))
                 end_popup() 
             end
             next_column()
@@ -140,6 +143,7 @@ function start(if_start,pics)
                         pics.clear()
                         images_func.download_images()
                         var res = db.exec("select picid,description from backgrounds order by picid")
+                        trans.jpg2bmp()
                         foreach i in res
                             # system.out.println("bmp_cache/" + i[0].data + ".bmp")
                             pics.push_back({to_integer(i[0].data),load_bmp_image("bmp_cache/" + i[0].data + ".bmp"),i[1].data})
