@@ -1,31 +1,54 @@
 package images_func
-import imgui,csdbc_mysql,trans
+import imgui,csdbc_mysql,trans,crc32
 import codec.base64.standard as base64
 var db = null
 function download_images()
     system.path.mkdir("backgrounds")
     system.path.mkdir("bmp_cache")
-    var res = db.exec("select * from backgrounds")
+    var res = db.exec("select picID, crc32 from backgrounds")
+    var pic_map = new hash_map
+    var flag = 0
     foreach record in res
-        var ofs = iostream.fstream("./backgrounds/" + record[0].data + ".jpg", iostream.openmode.bin_out)
-        base64.decode_stream(record[1].data, ofs)
+        var image_path = "./backgrounds/" + record[0].data + ".jpg"
+        # system.out.println(image_path)
+        if to_string(crc32.crc32_file(image_path)) != record[1].data
+        #    system.out.println("not  equal\n"+ record[1].data + "\n" + to_string(crc32.crc32_file(image_path)))
+        #     system.out.println(typeid(record[1].data))
+        #     system.out.println(typeid(crc32.crc32_file(image_path))) 
+            var picture = db.exec("select pic from backgrounds where picID=" + record[0].data)
+            var ofs = iostream.fstream("./backgrounds/" + record[0].data + ".jpg", iostream.openmode.bin_out)
+            base64.decode_stream(picture[0][0].data, ofs)
+            flag = 1
+            var code = to_string(crc32.crc32_file(image_path))
+            # system.out.println("update crc code")
+            var stmt = "update backgrounds set crc32=" + code + " where picID=" + record[0].data
+            db.just_exec(stmt)
+        else
+            # system.out.println("is equal")
+        end
     end
-    trans.jpg2bmp()
+    if flag==1
+        trans.jpg2bmp()
+    end
 end
 
 function update_sigle_image(id)
     var stmt = null
     var ifs = iostream.fstream("./backgrounds/" + to_string(id) + ".jpg", iostream.openmode.bin_in)
+    var image_path = "./backgrounds/" + to_string(id) + ".jpg"
+    var crc32_code = crc32.crc32_file(image_path)
     var str = base64.encode_stream(ifs)
     if db.exec("select picid from backgrounds where picid="+to_string(id)).size != 0
-        stmt = db.prepare("update backgrounds set pic=? where picID=?")
+        stmt = db.prepare("update backgrounds set pic=?, crc32=? where picID=?")
         stmt.bind(0,str)
-        stmt.bind(1,id)
+        stmt.bind(1,crc32_code)
+        stmt.bind(2,id)
     else
-        stmt =  db.prepare("INSERT INTO backgrounds (picid,pic,description)  VALUES  (?,?,?)")
+        stmt =  db.prepare("INSERT INTO backgrounds (picid,pic,description,crc32)  VALUES  (?,?,?,?)")
         stmt.bind(0,id)
         stmt.bind(1,str)
         stmt.bind(2,"")
+        stmt.bind(3,crc32_code)
     end
     stmt.just_exec()
 end
